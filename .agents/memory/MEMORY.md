@@ -1,0 +1,2 @@
+- [AuraLearning auth design](aura-learning-auth.md) — HMAC-SHA256 signed tokens, setAuthTokenGetter wired in AuthContext, demo user seeded.
+- [AuraLearning DB seed](aura-learning-db-seed.md) — All CBSE Class 6–10 subjects/chapters/topics seeded; 23 important questions; 14 tests; 45 questions in DB.

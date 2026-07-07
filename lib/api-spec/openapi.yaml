@@ -1,22 +1,37 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: AuraLearning Elite API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: subjects
+    description: Subjects and chapters
+  - name: tests
+    description: Tests and quizzes
+  - name: questions
+    description: Important questions
+  - name: bookmarks
+    description: Bookmarked content
+  - name: progress
+    description: Student progress
+  - name: results
+    description: Test results
+  - name: dashboard
+    description: Dashboard summary
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +39,418 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad request
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Unauthorized
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: OK
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+        "401":
+          description: Unauthorized
+
+  /subjects:
+    get:
+      operationId: listSubjects
+      tags: [subjects]
+      summary: List subjects for a class
+      parameters:
+        - name: classLevel
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Subject"
+
+  /subjects/{subjectId}:
+    get:
+      operationId: getSubject
+      tags: [subjects]
+      summary: Get subject with chapters
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubjectDetail"
+
+  /subjects/{subjectId}/chapters:
+    get:
+      operationId: listChapters
+      tags: [subjects]
+      summary: List chapters for a subject
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Chapter"
+
+  /topics:
+    get:
+      operationId: listTopics
+      tags: [subjects]
+      summary: List topics for a chapter
+      parameters:
+        - name: chapterId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Topic"
+
+  /progress:
+    get:
+      operationId: listProgress
+      tags: [progress]
+      summary: Get student progress across subjects
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Progress"
+
+  /progress/topic:
+    post:
+      operationId: updateTopicProgress
+      tags: [progress]
+      summary: Mark topic as complete or in-progress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProgressInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Progress"
+
+  /tests:
+    get:
+      operationId: listTests
+      tags: [tests]
+      summary: List available tests
+      parameters:
+        - name: classLevel
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: subjectId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Test"
+
+  /tests/{testId}:
+    get:
+      operationId: getTest
+      tags: [tests]
+      summary: Get test with questions
+      parameters:
+        - name: testId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestDetail"
+
+  /tests/{testId}/submit:
+    post:
+      operationId: submitTest
+      tags: [tests]
+      summary: Submit test answers and get result
+      parameters:
+        - name: testId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestSubmission"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestResult"
+
+  /questions/important:
+    get:
+      operationId: listImportantQuestions
+      tags: [questions]
+      summary: List important questions
+      parameters:
+        - name: classLevel
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: subject
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportantQuestionList"
+
+  /bookmarks:
+    get:
+      operationId: listBookmarks
+      tags: [bookmarks]
+      summary: List bookmarks for current user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Bookmark"
+
+    post:
+      operationId: addBookmark
+      tags: [bookmarks]
+      summary: Add bookmark
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookmarkInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bookmark"
+
+  /bookmarks/{bookmarkId}:
+    delete:
+      operationId: removeBookmark
+      tags: [bookmarks]
+      summary: Remove bookmark
+      parameters:
+        - name: bookmarkId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /results:
+    get:
+      operationId: listResults
+      tags: [results]
+      summary: List test results for current user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TestResult"
+
+  /results/{resultId}:
+    get:
+      operationId: getResult
+      tags: [results]
+      summary: Get detailed test result
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestResult"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary data
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/recent-tests:
+    get:
+      operationId: getRecentTests
+      tags: [dashboard]
+      summary: Get recent test results
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TestResult"
+
+  /dashboard/subject-progress:
+    get:
+      operationId: getSubjectProgress
+      tags: [dashboard]
+      summary: Get per-subject progress overview
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SubjectProgressSummary"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +461,451 @@ components:
       required:
         - status
 
+    RegisterInput:
+      type: object
+      required: [name, email, password, classLevel]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        classLevel:
+          type: integer
+          minimum: 6
+          maximum: 10
+
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [student, token]
+      properties:
+        student:
+          $ref: "#/components/schemas/Student"
+        token:
+          type: string
+
+    Student:
+      type: object
+      required: [id, name, email, classLevel, points, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        classLevel:
+          type: integer
+        points:
+          type: integer
+        avatarUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    Subject:
+      type: object
+      required: [id, name, classLevel, icon, color, totalChapters, completedChapters, totalTopics, completedTopics]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        classLevel:
+          type: integer
+        icon:
+          type: string
+        color:
+          type: string
+        totalChapters:
+          type: integer
+        completedChapters:
+          type: integer
+        totalTopics:
+          type: integer
+        completedTopics:
+          type: integer
+
+    SubjectDetail:
+      type: object
+      required: [id, name, classLevel, icon, color, chapters, mastery, weeklyGoal, weeklyCompleted]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        classLevel:
+          type: integer
+        icon:
+          type: string
+        color:
+          type: string
+        mastery:
+          type: integer
+        weeklyGoal:
+          type: integer
+        weeklyCompleted:
+          type: integer
+        chapters:
+          type: array
+          items:
+            $ref: "#/components/schemas/Chapter"
+
+    Chapter:
+      type: object
+      required: [id, subjectId, number, title, status, mastery]
+      properties:
+        id:
+          type: integer
+        subjectId:
+          type: integer
+        number:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+          enum: [not_started, in_progress, complete, marked_for_review]
+        mastery:
+          type: integer
+        topics:
+          type: array
+          items:
+            $ref: "#/components/schemas/Topic"
+
+    Topic:
+      type: object
+      required: [id, chapterId, title, status]
+      properties:
+        id:
+          type: integer
+        chapterId:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+          enum: [not_started, in_progress, complete, needs_review]
+        isImportant:
+          type: boolean
+
+    Progress:
+      type: object
+      required: [id, studentId, subjectId, chapterId, topicId, status, updatedAt]
+      properties:
+        id:
+          type: integer
+        studentId:
+          type: integer
+        subjectId:
+          type: integer
+        chapterId:
+          type: integer
+        topicId:
+          type: ["integer", "null"]
+        status:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProgressInput:
+      type: object
+      required: [topicId, status]
+      properties:
+        topicId:
+          type: integer
+        status:
+          type: string
+          enum: [not_started, in_progress, complete, needs_review]
+
+    Test:
+      type: object
+      required: [id, title, subjectId, subjectName, classLevel, totalQuestions, duration, difficulty, level]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        subjectId:
+          type: integer
+        subjectName:
+          type: string
+        classLevel:
+          type: integer
+        totalQuestions:
+          type: integer
+        duration:
+          type: integer
+        difficulty:
+          type: string
+          enum: [easy, medium, hard]
+        level:
+          type: string
+          enum: [starting, mid, complete, mastering, mastered]
+        chapterName:
+          type: ["string", "null"]
+
+    TestDetail:
+      type: object
+      required: [id, title, subjectId, subjectName, classLevel, totalQuestions, duration, difficulty, level, questions]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        subjectId:
+          type: integer
+        subjectName:
+          type: string
+        classLevel:
+          type: integer
+        totalQuestions:
+          type: integer
+        duration:
+          type: integer
+        difficulty:
+          type: string
+        level:
+          type: string
+        chapterName:
+          type: ["string", "null"]
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Question"
+
+    Question:
+      type: object
+      required: [id, text, type, options]
+      properties:
+        id:
+          type: integer
+        text:
+          type: string
+        type:
+          type: string
+          enum: [multiple_choice, fill_blank, short_answer, long_answer, match]
+        options:
+          type: array
+          items:
+            type: string
+        correctOption:
+          type: ["integer", "null"]
+        explanation:
+          type: ["string", "null"]
+
+    TestSubmission:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Answer"
+
+    Answer:
+      type: object
+      required: [questionId]
+      properties:
+        questionId:
+          type: integer
+        selectedOption:
+          type: ["integer", "null"]
+        textAnswer:
+          type: ["string", "null"]
+
+    TestResult:
+      type: object
+      required: [id, testId, testTitle, subjectName, classLevel, totalQuestions, attempted, correct, incorrect, score, mastery, completedAt]
+      properties:
+        id:
+          type: integer
+        testId:
+          type: integer
+        testTitle:
+          type: string
+        subjectName:
+          type: string
+        classLevel:
+          type: integer
+        totalQuestions:
+          type: integer
+        attempted:
+          type: integer
+        correct:
+          type: integer
+        incorrect:
+          type: integer
+        score:
+          type: integer
+        mastery:
+          type: integer
+        completedAt:
+          type: string
+          format: date-time
+        wrongAnswers:
+          type: array
+          items:
+            $ref: "#/components/schemas/WrongAnswer"
+        topicBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopicScore"
+
+    WrongAnswer:
+      type: object
+      required: [questionId, questionText, yourAnswer, correctAnswer]
+      properties:
+        questionId:
+          type: integer
+        questionText:
+          type: string
+        yourAnswer:
+          type: string
+        correctAnswer:
+          type: string
+
+    TopicScore:
+      type: object
+      required: [topic, score]
+      properties:
+        topic:
+          type: string
+        score:
+          type: integer
+
+    ImportantQuestion:
+      type: object
+      required: [id, text, subject, chapter, difficulty, frequency, solution, tags]
+      properties:
+        id:
+          type: integer
+        text:
+          type: string
+        subject:
+          type: string
+        chapter:
+          type: string
+        difficulty:
+          type: string
+          enum: [easy, medium, hard]
+        frequency:
+          type: string
+        solution:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        year:
+          type: ["string", "null"]
+        isBookmarked:
+          type: boolean
+
+    ImportantQuestionList:
+      type: object
+      required: [questions, total, page, limit]
+      properties:
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportantQuestion"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    Bookmark:
+      type: object
+      required: [id, type, referenceId, title, subject, chapter, createdAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [question, topic, chapter]
+        referenceId:
+          type: integer
+        title:
+          type: string
+        subject:
+          type: string
+        chapter:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    BookmarkInput:
+      type: object
+      required: [type, referenceId, title, subject, chapter]
+      properties:
+        type:
+          type: string
+          enum: [question, topic, chapter]
+        referenceId:
+          type: integer
+        title:
+          type: string
+        subject:
+          type: string
+        chapter:
+          type: string
+
+    DashboardSummary:
+      type: object
+      required: [student, totalPoints, weeklyGoalCompleted, weeklyGoalTotal, overallMastery, totalTestsTaken, averageScore, currentChapter, streakDays]
+      properties:
+        student:
+          $ref: "#/components/schemas/Student"
+        totalPoints:
+          type: integer
+        weeklyGoalCompleted:
+          type: integer
+        weeklyGoalTotal:
+          type: integer
+        overallMastery:
+          type: integer
+        totalTestsTaken:
+          type: integer
+        averageScore:
+          type: integer
+        currentChapter:
+          $ref: "#/components/schemas/Chapter"
+        streakDays:
+          type: integer
+
+    SubjectProgressSummary:
+      type: object
+      required: [subjectId, subjectName, color, icon, completedTopics, totalTopics, mastery]
+      properties:
+        subjectId:
+          type: integer
+        subjectName:
+          type: string
+        color:
+          type: string
+        icon:
+          type: string
+        completedTopics:
+          type: integer
+        totalTopics:
+          type: integer
+        mastery:
+          type: integer
