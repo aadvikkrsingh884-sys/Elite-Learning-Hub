@@ -11,6 +11,7 @@ export const progressTable = pgTable("progress", {
   chapterId: integer("chapter_id").notNull(),
   topicId: integer("topic_id").references(() => topicsTable.id),
   status: text("status").notNull().default("not_started"),
+  masteryPercent: integer("mastery_percent").notNull().default(0),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

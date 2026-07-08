@@ -4,3 +4,5 @@ export * from "./progress";
 export * from "./tests";
 export * from "./important_questions";
 export * from "./bookmarks";
+export * from "./question_bank";
+export * from "./flashcards";
