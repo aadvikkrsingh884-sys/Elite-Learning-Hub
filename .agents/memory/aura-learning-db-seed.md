@@ -26,3 +26,8 @@ description: What CBSE content is seeded into the Replit PostgreSQL database for
 - ID: 1, email: demo@auralearning.com, class 8, 2450 points.
 
 **Why:** Schema push was done before seeding; run `pnpm --filter @workspace/db run push` again if schema changes.
+
+## Reseeding after import / fresh DB
+- On a fresh/empty Postgres (e.g. project re-imported from GitHub), tables exist only after `pnpm --filter @workspace/db run push`; seed data does not travel with the code.
+- Seed script (`lib/db/src/seed.ts`) is idempotent: it TRUNCATEs all seedable tables inside one transaction, then reinserts — safe to re-run, never accumulates duplicates or fails on unique constraints.
+- Order after import: `pnpm --filter @workspace/db run push` then `pnpm --filter @workspace/db run seed`.

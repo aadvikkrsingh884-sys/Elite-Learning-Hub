@@ -3,7 +3,13 @@ import { Request, Response, NextFunction } from "express";
 import { db, studentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-const SECRET = process.env.SESSION_SECRET ?? "aura_learning_secret_2026";
+if (!process.env.SESSION_SECRET) {
+  throw new Error(
+    "SESSION_SECRET must be set. It signs auth tokens and salts password hashes; without it, tokens would be forgeable.",
+  );
+}
+
+const SECRET = process.env.SESSION_SECRET;
 
 export function hashPassword(password: string): string {
   const salt = "aura_learning_salt_2026";
