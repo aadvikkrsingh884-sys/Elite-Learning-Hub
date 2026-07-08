@@ -15,7 +15,7 @@ router.get("/subjects", async (req, res): Promise<void> => {
   const params = ListSubjectsQueryParams.safeParse(req.query);
   const classLevel = params.success ? params.data.classLevel : undefined;
 
-  const subjects = classLevel
+  const subjects = classLevel !== undefined
     ? await db.select().from(subjectsTable).where(eq(subjectsTable.classLevel, classLevel))
     : await db.select().from(subjectsTable);
 
