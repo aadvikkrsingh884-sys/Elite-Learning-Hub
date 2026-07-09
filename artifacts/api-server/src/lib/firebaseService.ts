@@ -43,6 +43,14 @@ function getFirebaseApp(): App {
       "FIREBASE_PRIVATE_KEY does not look like a PEM key (missing 'BEGIN PRIVATE KEY' header). Re-check the secret value.",
     );
   }
+  // Some secret-entry UIs strip all newlines, collapsing the PEM onto one
+  // line (header, base64 body, and footer all run together). Reconstruct
+  // proper PEM line breaks in that case.
+  if (!privateKey.includes("\n")) {
+    privateKey = privateKey
+      .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/, "-----BEGIN $1PRIVATE KEY-----\n")
+      .replace(/-----END (RSA )?PRIVATE KEY-----/, "\n-----END $1PRIVATE KEY-----");
+  }
 
   const existing = getApps();
   if (existing.length > 0) {
