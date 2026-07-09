@@ -19,6 +19,7 @@ import Creator from '@/pages/Creator';
 import Topics from '@/pages/Topics';
 import Bookmarks from '@/pages/Bookmarks';
 import Help from '@/pages/Help';
+import Resources from '@/pages/Resources';
 
 function NotFound() {
   return (
@@ -56,6 +57,7 @@ export default function App() {
                       <Route path="/profile" component={Profile} />
                       <Route path="/creator" component={Creator} />
                       <Route path="/help" component={Help} />
+                      <Route path="/resources" component={Resources} />
                       <Route component={NotFound} />
                     </Switch>
                   </AppLayout>

@@ -8,6 +8,7 @@ import questionsRouter from "./questions";
 import bookmarksRouter from "./bookmarks";
 import resultsRouter from "./results";
 import dashboardRouter from "./dashboard";
+import resourcesRouter from "./resources";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(questionsRouter);
 router.use(bookmarksRouter);
 router.use(resultsRouter);
 router.use(dashboardRouter);
+router.use(resourcesRouter);
 
 export default router;

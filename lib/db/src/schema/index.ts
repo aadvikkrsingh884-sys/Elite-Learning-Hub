@@ -6,3 +6,4 @@ export * from "./important_questions";
 export * from "./bookmarks";
 export * from "./question_bank";
 export * from "./flashcards";
+export * from "./study_resources";

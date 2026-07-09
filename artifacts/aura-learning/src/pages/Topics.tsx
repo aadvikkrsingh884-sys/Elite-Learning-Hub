@@ -23,6 +23,8 @@ import {
   CheckCircle2, Circle, Zap, Search, Bookmark,
   PlayCircle, ShieldAlert, ArrowLeft, Star, Flag
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { ResourceDownloadPanel, type StudyResource } from '@/components/ResourceDownloadPanel';
 
 // ─── Status Icon ─────────────────────────────────────────────────────────────
 
@@ -269,6 +271,30 @@ export default function Topics() {
     ? Math.round((completedCount / typedTopics.length) * 100)
     : 0;
 
+  // Fetch downloadable study resources for the active chapter
+  const BASE_URL = (import.meta.env.BASE_URL ?? '').replace(/\/$/, '');
+  const { data: chapterResources = [] } = useQuery<StudyResource[]>({
+    queryKey: ['resources', effectiveChapterId],
+    queryFn: async (): Promise<StudyResource[]> => {
+      if (!effectiveChapterId) return [];
+      const res = await fetch(`${BASE_URL}/api/resources?chapterId=${effectiveChapterId}`);
+      if (!res.ok) return [];
+      const raw: unknown = await res.json();
+      if (!Array.isArray(raw)) return [];
+      // Runtime shape guard — keep only rows with the required fields.
+      return raw.filter(
+        (r): r is StudyResource =>
+          r !== null &&
+          typeof r === "object" &&
+          typeof (r as any).id === "number" &&
+          typeof (r as any).resourceType === "string" &&
+          typeof (r as any).title === "string",
+      );
+    },
+    enabled: effectiveChapterId > 0,
+    staleTime: 120_000,
+  });
+
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-500">
 
@@ -429,6 +455,17 @@ export default function Topics() {
               />
             ))}
           </div>
+
+          {/* ── Download Resources panel ── */}
+          {activeChapter && (
+            <div className="px-4 sm:px-6 pb-5">
+              <ResourceDownloadPanel
+                chapterId={activeChapter.id}
+                chapterTitle={activeChapter.title}
+                resources={chapterResources}
+              />
+            </div>
+          )}
         </Card>
       )}
 

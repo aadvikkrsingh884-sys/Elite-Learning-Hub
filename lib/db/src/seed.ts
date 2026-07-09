@@ -1,7 +1,8 @@
 import { createHmac } from "crypto";
 import { sql } from "drizzle-orm";
-import { db, pool, subjectsTable, chaptersTable, topicsTable, testsTable, questionsTable, importantQuestionsTable, studentsTable, bookmarksTable, progressTable, testResultsTable } from "./index";
+import { db, pool, subjectsTable, chaptersTable, topicsTable, testsTable, questionsTable, importantQuestionsTable, studentsTable, bookmarksTable, progressTable, testResultsTable, questionBankTable, flashcardsTable, studyResourcesTable } from "./index";
 import { CURRICULUM, GRAMMAR_SUBJECTS } from "./curriculum";
+import { generateTopics, generateQuestionBank, generateFlashcards } from "./question-generators";
 
 if (!process.env.SESSION_SECRET) {
   throw new Error("SESSION_SECRET must be set before seeding (it salts the demo student's password hash).");
@@ -24,101 +25,61 @@ const SUBJECT_META: Record<string, { icon: string; color: string }> = {
 
 const CLASS_LEVELS = [6, 7, 8, 9, 10];
 const CORE_SUBJECT_NAMES = Object.keys(CURRICULUM);
+const TOPICS_PER_CHAPTER = 20;
+const QUESTIONS_PER_CHAPTER = 20;
+const FLASHCARDS_PER_CHAPTER = 8;
 
-// Subject-aware topic templates — every chapter gets a full, meaningful set of
-// sub-topics (not an arbitrary fixed count copy-pasted across subjects).
-const TOPIC_TEMPLATES: Record<string, (title: string) => string[]> = {
-  Mathematics: (t) => [
-    `${t} — Key Concepts & Definitions`,
-    `${t} — Solved Examples`,
-    `${t} — Practice Problems & Exercises`,
-    `${t} — Common Mistakes & Exam Tips`,
-  ],
-  Science: (t) => [
-    `${t} — Understanding the Concept`,
-    `${t} — Key Terms & Diagrams`,
-    `${t} — Activities & Experiments`,
-    `${t} — Real-World Applications`,
-  ],
-  "Social Science": (t) => [
-    `${t} — Overview & Key Facts`,
-    `${t} — Important Dates, Terms & Figures`,
-    `${t} — Map Work & Case Studies`,
-    `${t} — Analytical & HOTS Questions`,
-  ],
-  English: (t) => [
-    `${t} — Summary`,
-    `${t} — Theme & Message`,
-    `${t} — Character & Word Analysis`,
-    `${t} — Comprehension & Word Meanings`,
-  ],
-  Hindi: (t) => [
-    `${t} — सारांश (Summary)`,
-    `${t} — भावार्थ एवं संदेश (Theme & Message)`,
-    `${t} — शब्दार्थ एवं व्याख्या (Word Meanings)`,
-    `${t} — अभ्यास प्रश्न (Practice Questions)`,
-  ],
-  "English Grammar": (t) => [
-    `${t} — Rules & Definitions`,
-    `${t} — Examples & Usage`,
-    `${t} — Common Errors`,
-    `${t} — Practice Exercises`,
-  ],
-  "Hindi Grammar": (t) => [
-    `${t} — नियम एवं परिभाषा (Rules)`,
-    `${t} — उदाहरण एवं प्रयोग (Examples)`,
-    `${t} — सामान्य त्रुटियाँ (Common Errors)`,
-    `${t} — अभ्यास (Practice)`,
-  ],
-};
+// Batch-insert helper: drizzle-orm/pg can choke on very large single INSERT
+// statements, so chunk large arrays before calling .values().
+async function batchInsert<T>(table: any, rows: T[], chunkSize = 500) {
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    if (chunk.length > 0) await db.insert(table).values(chunk);
+  }
+}
 
 async function main() {
-  console.log("Seeding AuraLearning database with the full 2026-27 curriculum...");
+  console.log("Seeding AuraLearning database — full-depth 2026-27 curriculum + Question Bank Engine...");
+  const startedAt = Date.now();
 
-  await db.transaction(async (db) => {
-    // Reset seedable tables so this script is safely re-runnable. Truncate in
-    // the same transaction as the inserts below, so a failure anywhere leaves
-    // the database untouched instead of half-reseeded.
-    await db.execute(sql`TRUNCATE TABLE
-      ${bookmarksTable}, ${progressTable}, ${testResultsTable}, ${questionsTable},
-      ${importantQuestionsTable}, ${testsTable}, ${topicsTable}, ${chaptersTable},
-      ${subjectsTable}, ${studentsTable}
-      RESTART IDENTITY CASCADE`);
+  const report = {
+    subjects: 0, chapters: 0, topics: 0, questionBankItems: 0, flashcards: 0,
+    tests: 0, questions: 0, importantQuestions: 0,
+    byClass: {} as Record<number, { chapters: number; topics: number; questions: number; flashcards: number }>,
+  };
 
-    // 1. Subjects — 5 core subjects x classes 6-10, plus 2 global Grammar
-    // subjects (classLevel 0, shared across all classes — see Subjects.tsx
-    // which already fetches classLevel:0 subjects as "Grammar" tabs).
+  // Truncate in dependency order — no wrapping transaction (the massive batch
+  // inserts that follow must NOT share a single long-lived transaction, since
+  // our batchInsert helper uses the module-level db, not a tx-scoped one).
+  await db.execute(sql`TRUNCATE TABLE
+    ${bookmarksTable}, ${progressTable}, ${testResultsTable}, ${questionsTable},
+    ${importantQuestionsTable}, ${testsTable}, ${studyResourcesTable}, ${flashcardsTable},
+    ${questionBankTable}, ${topicsTable}, ${chaptersTable}, ${subjectsTable}, ${studentsTable}
+    RESTART IDENTITY CASCADE`);
+
+  {
+    // 1. Subjects — 5 core subjects x classes 6-10, plus 2 global Grammar subjects (classLevel 0).
     const subjectIdByClassName = new Map<string, number>();
-    let subjectCount = 0;
     for (const classLevel of CLASS_LEVELS) {
       for (const name of CORE_SUBJECT_NAMES) {
         const meta = SUBJECT_META[name];
-        const [row] = await db.insert(subjectsTable).values({
-          name, classLevel, icon: meta.icon, color: meta.color,
-        }).returning();
+        const [row] = await db.insert(subjectsTable).values({ name, classLevel, icon: meta.icon, color: meta.color }).returning();
         subjectIdByClassName.set(`${classLevel}:${name}`, row.id);
-        subjectCount++;
+        report.subjects++;
       }
     }
     const grammarSubjectId = new Map<string, number>();
     for (const name of Object.keys(GRAMMAR_SUBJECTS)) {
       const meta = SUBJECT_META[name];
-      const [row] = await db.insert(subjectsTable).values({
-        name, classLevel: 0, icon: meta.icon, color: meta.color,
-      }).returning();
+      const [row] = await db.insert(subjectsTable).values({ name, classLevel: 0, icon: meta.icon, color: meta.color }).returning();
       grammarSubjectId.set(name, row.id);
-      subjectCount++;
+      report.subjects++;
     }
-    console.log(`Inserted ${subjectCount} subjects`);
+    console.log(`Inserted ${report.subjects} subjects`);
 
-    // 2. Chapters — full chapter list for every subject, every class (sourced
-    // from the 2026-27 curriculum PDF; see curriculum.ts header for the small
-    // number of documented gaps filled from the standard NCERT sequence).
-    // Keyed by (classLevel, subjectId, title) so identical chapter titles that
-    // recur across different classes (e.g. "Acids, Bases and Salts" appears in
-    // both Class 7 and Class 10 Science) don't collide.
-    const chapterIdByKey = new Map<string, number>();
-    let chapterCount = 0;
+    // 2. Chapters, keyed by (classLevel, subjectName, title) to avoid collisions
+    // across classes/subjects (e.g. "Acids, Bases and Salts" in both Class 7 & 10).
+    const chapterRows: { key: string; classLevel: number; subjectName: string; chapterId: number; title: string; subjectId: number }[] = [];
     for (const classLevel of CLASS_LEVELS) {
       for (const name of CORE_SUBJECT_NAMES) {
         const subjectId = subjectIdByClassName.get(`${classLevel}:${name}`)!;
@@ -128,8 +89,8 @@ async function main() {
             subjectId, number: i + 1, title: chapters[i],
             description: `Chapter ${i + 1} of Class ${classLevel} ${name}`,
           }).returning();
-          chapterIdByKey.set(`${classLevel}:${name}:${chapters[i]}`, row.id);
-          chapterCount++;
+          chapterRows.push({ key: `${classLevel}:${name}:${chapters[i]}`, classLevel, subjectName: name, chapterId: row.id, title: chapters[i], subjectId });
+          report.chapters++;
         }
       }
     }
@@ -138,33 +99,85 @@ async function main() {
       const chapters = GRAMMAR_SUBJECTS[name];
       for (let i = 0; i < chapters.length; i++) {
         const [row] = await db.insert(chaptersTable).values({
-          subjectId, number: i + 1, title: chapters[i],
-          description: `Unit ${i + 1} of ${name}`,
+          subjectId, number: i + 1, title: chapters[i], description: `Unit ${i + 1} of ${name}`,
         }).returning();
-        chapterIdByKey.set(`0:${name}:${chapters[i]}`, row.id);
-        chapterCount++;
+        chapterRows.push({ key: `0:${name}:${chapters[i]}`, classLevel: 0, subjectName: name, chapterId: row.id, title: chapters[i], subjectId });
+        report.chapters++;
       }
     }
-    console.log(`Inserted ${chapterCount} chapters`);
+    console.log(`Inserted ${report.chapters} chapters`);
 
-    // 3. Topics — every chapter gets a full set of subject-appropriate topics.
-    // The 2nd topic in every chapter is flagged important for variety in the UI.
-    let topicCount = 0;
-    for (const [key, chapterId] of chapterIdByKey.entries()) {
-      const [, subjectName, ...rest] = key.split(":");
-      const chapterTitle = rest.join(":");
-      const template = TOPIC_TEMPLATES[subjectName];
-      const topics = template(chapterTitle);
-      for (let i = 0; i < topics.length; i++) {
-        await db.insert(topicsTable).values({
-          chapterId, title: topics[i], isImportant: i === 1 ? 1 : 0,
+    // 3. Topics — 20 per chapter, subject-aware templates (deep sub-topic coverage).
+    const topicRows: any[] = [];
+    for (const ch of chapterRows) {
+      const topics = generateTopics(ch.subjectName, ch.title).slice(0, TOPICS_PER_CHAPTER);
+      for (const t of topics) topicRows.push({ chapterId: ch.chapterId, title: t.title, isImportant: t.isImportant });
+      report.topics += topics.length;
+      const cls = report.byClass[ch.classLevel] ??= { chapters: 0, topics: 0, questions: 0, flashcards: 0 };
+      cls.chapters++; cls.topics += topics.length;
+    }
+    await batchInsert(topicsTable, topicRows);
+    console.log(`Inserted ${report.topics} topics`);
+
+    // 4. Question Bank — 20 practice questions per chapter (mixed MCQ/descriptive,
+    // subject-and-category-aware, computed answers verified where numeric).
+    const questionBankRows: any[] = [];
+    for (const ch of chapterRows) {
+      const qs = generateQuestionBank(ch.subjectName, ch.title, ch.chapterId, QUESTIONS_PER_CHAPTER);
+      for (const q of qs) {
+        questionBankRows.push({
+          chapterId: ch.chapterId, text: q.text, type: q.type, difficulty: q.difficulty,
+          optionA: q.optionA ?? null, optionB: q.optionB ?? null, optionC: q.optionC ?? null, optionD: q.optionD ?? null,
+          correctOption: q.correctOption ?? null, explanation: q.explanation,
         });
-        topicCount++;
+      }
+      report.questionBankItems += qs.length;
+      report.byClass[ch.classLevel].questions += qs.length;
+    }
+    await batchInsert(questionBankTable, questionBankRows);
+    console.log(`Inserted ${report.questionBankItems} question bank items`);
+
+    // 5. Flashcards — 8 per chapter for rapid revision.
+    const flashcardRows: any[] = [];
+    for (const ch of chapterRows) {
+      const cards = generateFlashcards(ch.subjectName, ch.title, FLASHCARDS_PER_CHAPTER);
+      for (const c of cards) flashcardRows.push({ chapterId: ch.chapterId, front: c.front, back: c.back, difficulty: c.difficulty });
+      report.flashcards += cards.length;
+      report.byClass[ch.classLevel].flashcards += cards.length;
+    }
+    await batchInsert(flashcardsTable, flashcardRows);
+    console.log(`Inserted ${report.flashcards} flashcards`);
+
+    // 6. Study Resources — 6 downloadable PDF types per chapter (2310 rows).
+    const SEED_RESOURCE_TYPES = [
+      { type: "VIPNote",      titleSuffix: "VIP Teacher Notes" },
+      { type: "CheatSheet",   titleSuffix: "Cheat Sheet" },
+      { type: "PYQ",          titleSuffix: "Previous Year Questions" },
+      { type: "RevisionNote", titleSuffix: "Quick Revision Notes" },
+      { type: "TopperNote",   titleSuffix: "Topper's Notes" },
+      { type: "SamplePaper",  titleSuffix: "Sample Examination Paper" },
+    ] as const;
+
+    const studyResourceRows: any[] = [];
+    for (const ch of chapterRows) {
+      const classId = ch.classLevel === 0 ? 6 : ch.classLevel; // grammar = class 6
+      for (const { type, titleSuffix } of SEED_RESOURCE_TYPES) {
+        studyResourceRows.push({
+          title: `${ch.title} — ${titleSuffix}`,
+          resourceType: type,
+          classId,
+          subjectId: ch.subjectId,
+          chapterId: ch.chapterId,
+          fileUrl: null,
+          description: null,
+        });
       }
     }
-    console.log(`Inserted ${topicCount} topics`);
+    await batchInsert(studyResourcesTable, studyResourceRows);
+    const studyResourceCount = studyResourceRows.length;
+    console.log(`Inserted ${studyResourceCount} study resources (${chapterRows.length} chapters × ${SEED_RESOURCE_TYPES.length} types)`);
 
-    // 4. Tests across classes with difficulty levels, referencing real chapters
+    // 7. Tests across classes with difficulty levels, referencing real chapters
     const testDefs: { title: string; subject: string; classLevel: number; difficulty: string; chapterName?: string }[] = [
       { title: "Rational Numbers Test", subject: "Mathematics", classLevel: 8, difficulty: "medium", chapterName: "Rational Numbers" },
       { title: "Algebraic Expressions Test", subject: "Mathematics", classLevel: 8, difficulty: "medium", chapterName: "Algebraic Expressions and Identities" },
@@ -192,9 +205,10 @@ async function main() {
       }).returning();
       testIdByTitle.set(t.title, row.id);
     }
-    console.log(`Inserted ${testDefs.length} tests`);
+    report.tests = testDefs.length;
+    console.log(`Inserted ${report.tests} tests`);
 
-    // 5. Questions for a handful of key tests
+    // 7. Questions for a handful of key tests
     function makeMCQs(prefix: string, count: number) {
       return Array.from({ length: count }, (_, i) => ({
         text: `${prefix} — sample question ${i + 1}`,
@@ -204,8 +218,6 @@ async function main() {
         explanation: `Explanation for ${prefix} question ${i + 1}.`,
       }));
     }
-
-    let questionCount = 0;
     const questionSets: [string, ReturnType<typeof makeMCQs>][] = [
       ["Rational Numbers Test", makeMCQs("Rational Numbers", 20)],
       ["Algebraic Expressions Test", makeMCQs("Algebraic Expressions", 20)],
@@ -213,14 +225,13 @@ async function main() {
     ];
     for (const [testTitle, qs] of questionSets) {
       const testId = testIdByTitle.get(testTitle)!;
-      for (const q of qs) {
-        await db.insert(questionsTable).values({ testId, ...q });
-        questionCount++;
-      }
+      for (const q of qs) { await db.insert(questionsTable).values({ testId, ...q }); report.questions++; }
     }
-    console.log(`Inserted ${questionCount} questions`);
+    console.log(`Inserted ${report.questions} test questions`);
 
-    // 6. Important questions across subjects for classes 6-10, referencing real chapters
+    // 8. Hand-authored, fact-checked Important Questions (unchanged from prior seed;
+    // these remain the curated, expert-quality set — distinct from the templated
+    // Question Bank above).
     const importantQs: { subject: string; chapter: string; classLevel: number; difficulty: string; text: string; solution: string; frequency?: string; year?: string }[] = [
       { subject: "Mathematics", chapter: "Rational Numbers", classLevel: 8, difficulty: "medium", text: "Prove that the sum of two rational numbers is always rational.", solution: "Let a/b and c/d be rational numbers. Their sum (ad+bc)/bd is a ratio of integers, hence rational.", frequency: "Very Common", year: "2025" },
       { subject: "Mathematics", chapter: "Algebraic Expressions and Identities", classLevel: 8, difficulty: "medium", text: "Expand (a+b)^3 using the standard identity.", solution: "(a+b)^3 = a^3 + 3a^2b + 3ab^2 + b^3.", frequency: "Common Question" },
@@ -242,7 +253,7 @@ async function main() {
       { subject: "Science", chapter: "Friction", classLevel: 8, difficulty: "easy", text: "Why is friction called a necessary evil?", solution: "It causes wear and tear and wastes energy, but without it we could not walk, write, or hold objects." },
       { subject: "Social Science", chapter: "Agriculture", classLevel: 8, difficulty: "medium", text: "What is meant by the 'Green Revolution' in India?", solution: "A period of major agricultural growth through high-yield seeds, irrigation, and fertilizers starting in the 1960s." },
       { subject: "Mathematics", chapter: "Mensuration", classLevel: 8, difficulty: "medium", text: "Derive the formula for the surface area of a cylinder.", solution: "Total surface area = 2*pi*r*(r + h), combining the curved surface area and the two circular ends." },
-      { subject: "Science", chapter: "Combustion and Flame", classLevel: 8, difficulty: "easy", text: "What are the three essential conditions for combustion?", solution: "Presence of a combustible substance, supporter of combustion (usually oxygen), and ignition temperature.", frequency: undefined },
+      { subject: "Science", chapter: "Combustion and Flame", classLevel: 8, difficulty: "easy", text: "What are the three essential conditions for combustion?", solution: "Presence of a combustible substance, supporter of combustion (usually oxygen), and ignition temperature." },
       { subject: "Social Science", chapter: "Industries", classLevel: 8, difficulty: "medium", text: "Classify industries on the basis of raw material used.", solution: "Agro-based, mineral-based, marine-based, and forest-based industries." },
       { subject: "Mathematics", chapter: "Exponents and Powers", classLevel: 8, difficulty: "easy", text: "Express 0.0000000000000942 in standard form.", solution: "9.42 x 10^-14." },
     ];
@@ -254,20 +265,34 @@ async function main() {
         solution: q.solution, tags: "[]", year: q.year ?? null,
       });
     }
-    console.log(`Inserted ${importantQs.length} important questions`);
+    report.importantQuestions = importantQs.length;
+    console.log(`Inserted ${report.importantQuestions} important questions`);
 
-    // 7. Demo student
+    // 9. Demo student
     await db.insert(studentsTable).values({
-      name: "Demo Student",
-      email: "demo@auralearning.com",
-      passwordHash: hashPassword("password123"),
-      classLevel: 8,
-      points: 2450,
-      avatarUrl: null,
+      name: "Demo Student", email: "demo@auralearning.com", passwordHash: hashPassword("password123"),
+      classLevel: 8, points: 2450, avatarUrl: null,
     });
     console.log("Inserted demo student (demo@auralearning.com / password123)");
-  }); // end transaction
+  } // end seeding block
 
+  const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
+  console.log("\n================ SEED REPORT ================");
+  console.log(`Subjects:           ${report.subjects}`);
+  console.log(`Chapters:           ${report.chapters}`);
+  console.log(`Topics:             ${report.topics}`);
+  console.log(`Question Bank rows: ${report.questionBankItems}`);
+  console.log(`Flashcards:         ${report.flashcards}`);
+  console.log(`Tests:              ${report.tests}`);
+  console.log(`Test questions:     ${report.questions}`);
+  console.log(`Important Qs:       ${report.importantQuestions}`);
+  console.log("By class level:");
+  for (const cls of Object.keys(report.byClass).sort()) {
+    const r = report.byClass[Number(cls)];
+    console.log(`  Class ${cls}: ${r.chapters} chapters, ${r.topics} topics, ${r.questions} question-bank items, ${r.flashcards} flashcards`);
+  }
+  console.log(`Elapsed: ${elapsedSec}s`);
+  console.log("===============================================");
   console.log("Seed complete.");
 }
 
