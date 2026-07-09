@@ -100,6 +100,13 @@ async function buildAll() {
       "puppeteer",
       "puppeteer-core",
       "electron",
+      // fontkit (a pdfkit dependency) uses @swc/helpers as a plain CJS require
+      // that esbuild cannot resolve correctly once bundled into ESM output.
+      "pdfkit",
+      "fontkit",
+      "brotli",
+      "png-js",
+      "@swc/helpers/*",
     ],
     sourcemap: "linked",
     plugins: [

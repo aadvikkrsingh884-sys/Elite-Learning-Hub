@@ -5,6 +5,7 @@ import { Switch, Route } from 'wouter';
 import { Router as WouterRouter } from 'wouter';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { StudyBuddyProvider } from '@/contexts/StudyBuddyContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 
 // Pages
@@ -42,6 +43,7 @@ export default function App() {
         <ThemeProvider>
           <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, '') ?? ''}>
             <AuthProvider>
+              <StudyBuddyProvider>
               <Switch>
                 <Route path="/" component={EntryGateway} />
                 <Route path="/:rest*">
@@ -63,6 +65,7 @@ export default function App() {
                   </AppLayout>
                 </Route>
               </Switch>
+              </StudyBuddyProvider>
             </AuthProvider>
           </WouterRouter>
         </ThemeProvider>

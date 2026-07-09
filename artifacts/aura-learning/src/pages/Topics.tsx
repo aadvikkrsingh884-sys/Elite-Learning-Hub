@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { ResourceDownloadPanel, type StudyResource } from '@/components/ResourceDownloadPanel';
+import { useStudyBuddy } from '@/contexts/StudyBuddyContext';
 
 // ─── Status Icon ─────────────────────────────────────────────────────────────
 
@@ -231,6 +232,17 @@ export default function Topics() {
 
   const activeChapter = typedChapters.find(c => c.id === effectiveChapterId);
 
+  // Ground the global AI Study Buddy widget in whatever chapter is open here.
+  const { setActiveChapter: setStudyBuddyChapter } = useStudyBuddy();
+  useEffect(() => {
+    if (activeChapter) {
+      setStudyBuddyChapter({ chapterId: activeChapter.id, chapterTitle: activeChapter.title });
+    } else {
+      setStudyBuddyChapter(null);
+    }
+    return () => setStudyBuddyChapter(null);
+  }, [activeChapter?.id, activeChapter?.title, setStudyBuddyChapter]);
+
   // Status cycle: not_started → in_progress → complete → not_started
   const CYCLE: Record<TopicStatus, ProgressInputStatus> = {
     [TopicStatus.not_started]: ProgressInputStatus.in_progress,
@@ -277,9 +289,10 @@ export default function Topics() {
     queryKey: ['resources', effectiveChapterId],
     queryFn: async (): Promise<StudyResource[]> => {
       if (!effectiveChapterId) return [];
-      const res = await fetch(`${BASE_URL}/api/resources?chapterId=${effectiveChapterId}`);
+      const res = await fetch(`${BASE_URL}/api/resources?chapterId=${effectiveChapterId}&pageSize=50`);
       if (!res.ok) return [];
-      const raw: unknown = await res.json();
+      const body: unknown = await res.json();
+      const raw: unknown = Array.isArray(body) ? body : (body as { items?: unknown[] })?.items ?? [];
       if (!Array.isArray(raw)) return [];
       // Runtime shape guard — keep only rows with the required fields.
       return raw.filter(

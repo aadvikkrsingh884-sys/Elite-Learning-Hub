@@ -85,16 +85,25 @@ export default function Resources() {
   const [search, setSearch] = useState('');
   const [activeType, setActiveType] = useState<string | null>(null);
 
-  const { data: resources = [], isLoading } = useQuery<StudyResource[]>({
-    queryKey: ['resources', student?.classLevel],
+  const [visiblePages, setVisiblePages] = useState(1);
+  const PAGE_SIZE = 24;
+
+  const { data, isLoading, isFetching } = useQuery<{ items: StudyResource[]; total: number; hasMore: boolean }>({
+    queryKey: ['resources', student?.classLevel, visiblePages],
     queryFn: async () => {
-      const qs = student?.classLevel ? `?classId=${student.classLevel}` : '';
-      const res = await fetch(`${BASE_URL}/api/resources${qs}`);
+      const params = new URLSearchParams();
+      if (student?.classLevel) params.set('classId', String(student.classLevel));
+      params.set('page', '1');
+      params.set('pageSize', String(PAGE_SIZE * visiblePages));
+      const res = await fetch(`${BASE_URL}/api/resources?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to load resources');
       return res.json();
     },
     staleTime: 60_000,
   });
+
+  const resources = data?.items ?? [];
+  const hasMore = data?.hasMore ?? false;
 
   const filtered = useMemo(() => {
     let r = resources;
@@ -127,7 +136,7 @@ export default function Resources() {
           <div>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight">Study Resource Hub</h1>
             <p className="text-sm text-muted-foreground font-medium">
-              {isLoading ? 'Loading…' : `${resources.length > 0 ? resources.length : 'Preview'} PDFs · Class ${student?.classLevel ?? 8} · 2026-27 CBSE`}
+              {isLoading ? 'Loading…' : `${data?.total ?? (resources.length > 0 ? resources.length : 'Preview')} PDFs · Class ${student?.classLevel ?? 8} · 2026-27 CBSE`}
             </p>
           </div>
         </div>
@@ -222,6 +231,21 @@ export default function Resources() {
           <p className="font-semibold text-muted-foreground">No resources match your filter.</p>
           <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setActiveType(null); }}>
             Clear filters
+          </Button>
+        </div>
+      )}
+
+      {/* ── Lazy-load more (pagination) ── */}
+      {!isLoading && !showPreview && hasMore && !activeType && !search && (
+        <div className="flex justify-center pt-2">
+          <Button
+            variant="outline"
+            className="h-10 font-bold gap-2"
+            disabled={isFetching}
+            onClick={() => setVisiblePages(p => p + 1)}
+          >
+            {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Load more resources
           </Button>
         </div>
       )}

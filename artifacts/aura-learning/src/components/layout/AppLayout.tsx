@@ -3,6 +3,7 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { BottomNav } from './BottomNav';
 import { useAuth } from '@/contexts/AuthContext';
+import { StudyBuddyChat } from '@/components/StudyBuddyChat';
 import { Redirect } from 'wouter';
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -33,6 +34,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom navigation — hidden on md+ */}
       <BottomNav />
+
+      {/* AI Study Buddy — global floating chat widget */}
+      <StudyBuddyChat />
     </div>
   );
 }

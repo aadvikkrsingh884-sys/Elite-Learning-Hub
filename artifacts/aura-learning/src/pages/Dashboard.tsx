@@ -1,4 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
+import { useStudyBuddy } from '@/contexts/StudyBuddyContext';
 import { 
   useGetDashboardSummary, 
   useGetRecentTests, 
@@ -14,6 +15,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
 export default function Dashboard() {
   const { student } = useAuth();
+  const { openChat } = useStudyBuddy();
   const [, setLocation] = useLocation();
   
   // Real data hooks
@@ -246,7 +248,10 @@ export default function Dashboard() {
               <p className="text-sm text-muted-foreground mb-5 font-medium leading-relaxed">
                 Stuck on a problem? Chat with our AI study buddy for instant hints and step-by-step guidance.
               </p>
-              <Button className="w-full font-bold bg-success hover:bg-success/90 text-white shadow-sm gap-2">
+              <Button
+                className="w-full font-bold bg-success hover:bg-success/90 text-white shadow-sm gap-2"
+                onClick={() => openChat()}
+              >
                 <MessageCircle className="w-4 h-4" /> Chat with Study Buddy
               </Button>
             </CardContent>

@@ -3,8 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { MessageCircle, Search, Mail, Phone, ExternalLink } from 'lucide-react';
+import { useStudyBuddy } from '@/contexts/StudyBuddyContext';
 
 export default function Help() {
+  const { openChat } = useStudyBuddy();
   const faqs = [
     {
       q: "How does the points system work?",
@@ -72,7 +74,10 @@ export default function Help() {
             <p className="text-muted-foreground font-medium mb-6 flex-1">
               Stuck on a specific academic problem? Chat with our AI tutor for instant, step-by-step guidance.
             </p>
-            <Button className="w-full font-bold h-11 gap-2 bg-success hover:bg-success/90 text-white shadow-sm">
+            <Button
+              className="w-full font-bold h-11 gap-2 bg-success hover:bg-success/90 text-white shadow-sm"
+              onClick={() => openChat()}
+            >
               <MessageCircle className="w-4 h-4" /> Chat Now
             </Button>
           </CardContent>

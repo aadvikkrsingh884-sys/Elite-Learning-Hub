@@ -9,6 +9,7 @@ import bookmarksRouter from "./bookmarks";
 import resultsRouter from "./results";
 import dashboardRouter from "./dashboard";
 import resourcesRouter from "./resources";
+import chatRouter from "./chat";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(bookmarksRouter);
 router.use(resultsRouter);
 router.use(dashboardRouter);
 router.use(resourcesRouter);
+router.use(chatRouter);
 
 export default router;
