@@ -11,18 +11,54 @@ import { getStorage } from "firebase-admin/storage";
 
 let app: App | null = null;
 
-function getFirebaseApp(): App {
-  if (app) return app;
+interface ServiceAccountCreds {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
+  storageBucket: string;
+}
+
+/**
+ * Resolves service-account credentials. Prefers FIREBASE_SERVICE_ACCOUNT_BASE64
+ * (the entire service-account JSON file, base64-encoded) when present, since
+ * that survives copy/paste through secret-entry UIs without corruption —
+ * multi-line PEM private keys pasted as a raw env var are extremely prone to
+ * silently losing characters (dropped newlines, stripped backslashes, etc.),
+ * which manifests as "Failed to parse private key" / invalid base64 errors.
+ * Falls back to the four discrete FIREBASE_* secrets for backward compat.
+ */
+function resolveCredentials(): ServiceAccountCreds | null {
+  const b64 = process.env["FIREBASE_SERVICE_ACCOUNT_BASE64"];
+  const storageBucketEnv = process.env["FIREBASE_STORAGE_BUCKET"];
+
+  if (b64) {
+    let json: Record<string, unknown>;
+    try {
+      json = JSON.parse(Buffer.from(b64.trim(), "base64").toString("utf8"));
+    } catch (err) {
+      throw new Error(
+        `FIREBASE_SERVICE_ACCOUNT_BASE64 could not be decoded/parsed as JSON: ${(err as Error).message}`,
+      );
+    }
+    const projectId = (json["project_id"] as string) ?? process.env["FIREBASE_PROJECT_ID"];
+    const clientEmail = (json["client_email"] as string) ?? process.env["FIREBASE_CLIENT_EMAIL"];
+    const privateKey = json["private_key"] as string;
+    const storageBucket = storageBucketEnv ?? (projectId ? `${projectId}.appspot.com` : undefined);
+    if (!projectId || !clientEmail || !privateKey || !storageBucket) {
+      throw new Error(
+        "FIREBASE_SERVICE_ACCOUNT_BASE64 is missing required fields (project_id, client_email, private_key) or FIREBASE_STORAGE_BUCKET is not set.",
+      );
+    }
+    return { projectId, clientEmail, privateKey, storageBucket };
+  }
 
   const projectId = process.env["FIREBASE_PROJECT_ID"];
   const clientEmail = process.env["FIREBASE_CLIENT_EMAIL"];
   const privateKeyRaw = process.env["FIREBASE_PRIVATE_KEY"];
-  const storageBucket = process.env["FIREBASE_STORAGE_BUCKET"];
+  const storageBucket = storageBucketEnv;
 
   if (!projectId || !clientEmail || !privateKeyRaw || !storageBucket) {
-    throw new Error(
-      "Firebase is not configured. Required secrets: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, FIREBASE_STORAGE_BUCKET.",
-    );
+    return null;
   }
 
   // Service-account private keys are frequently mangled in transit: wrapped
@@ -43,13 +79,23 @@ function getFirebaseApp(): App {
       "FIREBASE_PRIVATE_KEY does not look like a PEM key (missing 'BEGIN PRIVATE KEY' header). Re-check the secret value.",
     );
   }
-  // Some secret-entry UIs strip all newlines, collapsing the PEM onto one
-  // line (header, base64 body, and footer all run together). Reconstruct
-  // proper PEM line breaks in that case.
   if (!privateKey.includes("\n")) {
     privateKey = privateKey
       .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/, "-----BEGIN $1PRIVATE KEY-----\n")
       .replace(/-----END (RSA )?PRIVATE KEY-----/, "\n-----END $1PRIVATE KEY-----");
+  }
+
+  return { projectId, clientEmail, privateKey, storageBucket };
+}
+
+function getFirebaseApp(): App {
+  if (app) return app;
+
+  const creds = resolveCredentials();
+  if (!creds) {
+    throw new Error(
+      "Firebase is not configured. Provide FIREBASE_SERVICE_ACCOUNT_BASE64 (preferred), or the four discrete secrets: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, FIREBASE_STORAGE_BUCKET.",
+    );
   }
 
   const existing = getApps();
@@ -59,19 +105,18 @@ function getFirebaseApp(): App {
   }
 
   app = initializeApp({
-    credential: cert({ projectId, clientEmail, privateKey }),
-    storageBucket,
+    credential: cert({ projectId: creds.projectId, clientEmail: creds.clientEmail, privateKey: creds.privateKey }),
+    storageBucket: creds.storageBucket,
   });
   return app;
 }
 
 export function isFirebaseConfigured(): boolean {
-  return Boolean(
-    process.env["FIREBASE_PROJECT_ID"] &&
-      process.env["FIREBASE_CLIENT_EMAIL"] &&
-      process.env["FIREBASE_PRIVATE_KEY"] &&
-      process.env["FIREBASE_STORAGE_BUCKET"],
-  );
+  try {
+    return resolveCredentials() !== null;
+  } catch {
+    return false;
+  }
 }
 
 /**
