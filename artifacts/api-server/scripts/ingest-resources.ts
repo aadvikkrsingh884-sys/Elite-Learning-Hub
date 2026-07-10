@@ -1,9 +1,9 @@
 /**
  * Phase 4 pilot ingestion: generates a real PDF for each not-yet-filed
  * study_resources row belonging to a pilot set of subjects, uploads it to
- * Firebase Storage, and writes the resulting public URL back to `file_url`
- * so the download route redirects straight to Firebase instead of
- * generating on the fly.
+ * Replit Object Storage, and writes the resulting public URL back to
+ * `file_url` so the download route redirects straight to the stored file
+ * instead of generating on the fly.
  *
  * Usage: pnpm --filter @workspace/api-server exec tsx scripts/ingest-resources.ts [subjectId ...]
  * With no args, ingests the first 3 subjects (by id) as a pilot batch.
@@ -11,11 +11,11 @@
 import { db, studyResourcesTable, chaptersTable, subjectsTable } from "@workspace/db";
 import { eq, inArray, isNull } from "drizzle-orm";
 import { renderProfessionalPdf } from "../src/routes/resources";
-import { isFirebaseConfigured, uploadBufferToFirebase } from "../src/lib/firebaseService";
+import { isObjectStorageConfigured, uploadBufferToPublicStorage } from "../src/lib/resourceStorage";
 
 async function main() {
-  if (!isFirebaseConfigured()) {
-    console.error("Firebase is not configured — set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, FIREBASE_STORAGE_BUCKET.");
+  if (!isObjectStorageConfigured()) {
+    console.error("Object storage is not configured — run setupObjectStorage() first.");
     process.exit(1);
   }
 
@@ -62,8 +62,8 @@ async function main() {
         const safeTitle = r.title.replace(/[^a-z0-9]/gi, "-").toLowerCase();
         const destination = `resources/class-${r.classId}/subject-${subject.id}/chapter-${r.chapterId ?? "na"}/${r.id}-${safeTitle}.pdf`;
 
-        const url = await uploadBufferToFirebase({ buffer: pdfBuffer, destination, contentType: "application/pdf" });
-        await db.update(studyResourcesTable).set({ fileUrl: url }).where(eq(studyResourcesTable.id, r.id));
+        const { storageUrl } = await uploadBufferToPublicStorage({ buffer: pdfBuffer, destination, contentType: "application/pdf" });
+        await db.update(studyResourcesTable).set({ fileUrl: storageUrl }).where(eq(studyResourcesTable.id, r.id));
 
         uploaded++;
         if (uploaded % 25 === 0) console.log(`  ...${uploaded} uploaded so far`);

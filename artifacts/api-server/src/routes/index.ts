@@ -10,10 +10,12 @@ import resultsRouter from "./results";
 import dashboardRouter from "./dashboard";
 import resourcesRouter from "./resources";
 import chatRouter from "./chat";
+import storageRouter from "./storage";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(storageRouter);
 router.use(authRouter);
 router.use(subjectsRouter);
 router.use(progressRouter);
