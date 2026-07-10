@@ -151,7 +151,7 @@ router.post("/chat", async (req, res): Promise<void> => {
 
     const systemPreamble = buildSystemPreamble(context);
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const chatHistory = (history ?? []).slice(-8).map((h) => ({
       role: h.role === "assistant" ? ("model" as const) : ("user" as const),
@@ -174,8 +174,9 @@ router.post("/chat", async (req, res): Promise<void> => {
       messageParts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
     }
 
-    const result = await chat.sendMessage(messageParts);
-    const reply = result.response.text();
+    // Gemini occasionally hangs or the connection drops under load; fail fast with one retry
+    // instead of leaving the student staring at a spinner for 60-120s.
+    const reply = await sendWithRetry(chat, messageParts);
 
     res.json({ reply, grounded: Boolean(context) });
   } catch (err) {
@@ -187,8 +188,42 @@ router.post("/chat", async (req, res): Promise<void> => {
       });
       return;
     }
+    if (message === "gemini_timeout" || message.toLowerCase().includes("fetch failed")) {
+      res.status(503).json({
+        error: "AI Study Buddy couldn't reach Gemini in time. Please try again in a moment.",
+      });
+      return;
+    }
     res.status(500).json({ error: "AI Study Buddy failed to respond" });
   }
 });
+
+const GEMINI_TIMEOUT_MS = 25_000;
+
+/**
+ * Sends a message with a hard timeout (Gemini can otherwise hang well past a
+ * minute under load) and one retry on timeout/network failure, so a single
+ * transient blip doesn't turn into a 2-minute hang for the student.
+ */
+async function sendWithRetry(
+  chat: ReturnType<ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["startChat"]>,
+  parts: Part[],
+  attempt = 1,
+): Promise<string> {
+  try {
+    const result = await Promise.race([
+      chat.sendMessage(parts),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("gemini_timeout")), GEMINI_TIMEOUT_MS)),
+    ]);
+    return result.response.text();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const retryable = message === "gemini_timeout" || message.toLowerCase().includes("fetch failed");
+    if (retryable && attempt < 2) {
+      return sendWithRetry(chat, parts, attempt + 1);
+    }
+    throw err;
+  }
+}
 
 export default router;

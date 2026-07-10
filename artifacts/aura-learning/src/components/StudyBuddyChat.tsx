@@ -58,12 +58,14 @@ export function StudyBuddyChat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, open]);
 
-  // Revoke the object URL when it's replaced or the component unmounts, to avoid leaking memory.
+  // Object URLs used only in message bubbles (already sent) so we revoke them
+  // on unmount without disturbing whichever URL the pending picker currently holds.
+  const sentImageUrlsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     return () => {
-      if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl);
+      for (const url of sentImageUrlsRef.current) URL.revokeObjectURL(url);
     };
-  }, [pendingImage]);
+  }, []);
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -105,7 +107,8 @@ export function StudyBuddyChat() {
     if ((!text && !image) || sending) return;
     setInput('');
     setError(null);
-    setPendingImage(null);
+    setPendingImage(null); // clears the picker without revoking — the URL now belongs to the message bubble below
+    if (image) sentImageUrlsRef.current.add(image.previewUrl);
     const nextHistory: ChatMsg[] = [
       ...messages,
       { role: 'user', content: text || '📷 Photo', imagePreviewUrl: image?.previewUrl },
