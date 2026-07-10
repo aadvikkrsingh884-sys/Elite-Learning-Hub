@@ -2,8 +2,18 @@ import { Router, type IRouter } from "express";
 import { db, testsTable, questionsTable, testResultsTable, subjectsTable, studentsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { ListTestsQueryParams, SubmitTestBody } from "@workspace/api-zod";
+import { authMiddleware } from "../lib/auth";
 
 const router: IRouter = Router();
+
+function optionalAuth(req: any, res: any, next: any) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    authMiddleware(req, res, next);
+  } else {
+    next();
+  }
+}
 
 function parseIntParam(val: unknown): number | undefined {
   if (val === undefined || val === null || val === "") return undefined;
@@ -78,7 +88,7 @@ router.get("/tests/:testId", async (req, res): Promise<void> => {
   });
 });
 
-router.post("/tests/:testId/submit", async (req, res): Promise<void> => {
+router.post("/tests/:testId/submit", optionalAuth, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.testId) ? req.params.testId[0] : req.params.testId;
   const testId = parseInt(raw, 10);
 
