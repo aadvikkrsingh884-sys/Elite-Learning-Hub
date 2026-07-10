@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, testsTable, questionsTable, testResultsTable, subjectsTable, studentsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { ListTestsQueryParams, SubmitTestBody } from "@workspace/api-zod";
 import { authMiddleware } from "../lib/auth";
 
@@ -157,9 +157,9 @@ router.post("/tests/:testId/submit", optionalAuth, async (req, res): Promise<voi
     }).returning();
     resultId = inserted.id;
 
-    // Award points
+    // Award points — accumulate, don't overwrite
     await db.update(studentsTable)
-      .set({ points: correct * 10 })
+      .set({ points: sql`${studentsTable.points} + ${correct * 10}` })
       .where(eq(studentsTable.id, studentId));
   }
 

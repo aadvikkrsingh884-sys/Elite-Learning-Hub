@@ -49,7 +49,21 @@ export default function Dashboard() {
     return <DashboardSkeleton />;
   }
 
-  const completionPercentage = summary ? Math.round((summary.weeklyGoalCompleted / Math.max(1, summary.weeklyGoalTotal)) * 100) : 75;
+  const weeklyDone = summary?.weeklyGoalCompleted ?? 0;
+  const weeklyTotal = summary?.weeklyGoalTotal ?? 5;
+  const totalTests = summary?.totalTestsTaken ?? 0;
+  const completionPercentage = Math.round((weeklyDone / Math.max(1, weeklyTotal)) * 100);
+
+  // New user = no tests taken and no topics completed this week
+  const isNewUser = totalTests === 0 && weeklyDone === 0;
+  const greetingTitle = isNewUser
+    ? `Welcome, ${firstName}! 🎉`
+    : `Welcome back, ${firstName}! 👋`;
+  const greetingSubtitle = isNewUser
+    ? `Ready to start your learning journey? Let's make today count! 🚀`
+    : completionPercentage === 0
+      ? `You haven't logged any activity this week yet — kick things off today! 💪`
+      : `You're doing great! You've completed ${completionPercentage}% of your weekly goals.`;
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-500">
@@ -61,10 +75,10 @@ export default function Dashboard() {
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <h1 className="text-3xl md:text-4xl font-black tracking-tight drop-shadow-sm">
-              Welcome back, {firstName}! 👋
+              {greetingTitle}
             </h1>
             <p className="text-lg text-primary-foreground/90 font-medium">
-              You're doing great! You've completed {completionPercentage}% of your weekly goals.
+              {greetingSubtitle}
             </p>
           </div>
           <div className="shrink-0">
