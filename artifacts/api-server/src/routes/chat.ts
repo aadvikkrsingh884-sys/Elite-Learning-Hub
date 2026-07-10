@@ -1,15 +1,19 @@
 /**
- * AI Study Buddy — Firebase/Gemini-backed RAG chatbot.
+ * AI Study Buddy — Gemini-backed RAG chatbot with vision support.
  *
- * POST /chat  { chapterId, message, history? }
+ * POST /chat  { chapterId, message, history?, image? }
  *
  * Retrieval: pulls the topics, question-bank Q&A, and flashcards for the
  * given chapter directly from Postgres and feeds them to Gemini as grounding
- * context, so answers are scoped to the chapter the student is viewing
- * instead of the model's general knowledge.
+ * context, so syllabus questions are scoped to the chapter the student is
+ * viewing. Questions outside that context (or with no chapter open) fall
+ * back to general "expert tutor" answers instead of refusing — see
+ * `buildSystemPreamble`. `image` (base64 + mimeType) lets a student attach a
+ * photo of a doubt (e.g. a textbook problem) for Gemini's vision model to
+ * read directly, no separate OCR step needed.
  */
 import { Router, type IRouter } from "express";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, type Part } from "@google/generative-ai";
 import { db, chaptersTable, topicsTable, questionBankTable, flashcardsTable, subjectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
@@ -18,9 +22,18 @@ const router: IRouter = Router();
 const apiKey = process.env["GEMINI_API_KEY"];
 const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
+// Keep in sync with the frontend's own guard in StudyBuddyChat.tsx.
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB raw file, ~10.7MB once base64-encoded
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/heic", "image/heif"]);
+
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+interface ChatImage {
+  data: string; // base64, no data: prefix
+  mimeType: string;
 }
 
 async function buildChapterContext(chapterId: number): Promise<string> {
@@ -64,6 +77,37 @@ async function buildChapterContext(chapterId: number): Promise<string> {
   return parts.join("\n");
 }
 
+/**
+ * Builds the system preamble. The assistant always operates in one of two
+ * blended modes rather than a hard switch:
+ *  - Syllabus mode (a chapter is open): ground answers in that chapter's
+ *    content first, but if the question strays outside it, say so briefly
+ *    and still answer well as a general tutor instead of refusing.
+ *  - General Tutor mode (no chapter open, or the topic is unrelated to any
+ *    CBSE syllabus at all — e.g. a general-knowledge or off-syllabus
+ *    question): answer as a knowledgeable, encouraging expert tutor, not
+ *    limited to the CBSE curriculum.
+ */
+function buildSystemPreamble(context: string): string {
+  const base =
+    `You are AuraLearning's "AI Study Buddy", a Universal AI Study Assistant for students. ` +
+    `You serve two modes and should pick whichever fits the student's question: ` +
+    `(1) Syllabus mode — for CBSE curriculum questions, explain step-by-step, exam-focused and age-appropriate; ` +
+    `(2) General Tutor mode — for anything outside the syllabus (other boards, general knowledge, coding, career advice, life questions, etc.), ` +
+    `answer as a friendly, expert tutor with the same care and clarity, instead of refusing or saying it's out of scope. ` +
+    `If a student attaches a photo of a problem, read it carefully (handwriting, diagrams, printed text) and solve or explain what's shown.`;
+
+  if (!context) {
+    return `${base}\n\nNo specific chapter is open right now, so use General Tutor mode by default unless the student's question is clearly CBSE-syllabus related.`;
+  }
+
+  return (
+    `${base}\n\nA chapter is currently open — prefer Syllabus mode and answer strictly using the chapter context below when it is relevant. ` +
+    `If the question falls outside this chapter's context, briefly say so, then switch to General Tutor mode and still give a complete, helpful answer.` +
+    `\n\n--- CHAPTER CONTEXT ---\n${context}\n--- END CONTEXT ---\n`
+  );
+}
+
 router.post("/chat", async (req, res): Promise<void> => {
   try {
     if (!genAI) {
@@ -73,15 +117,31 @@ router.post("/chat", async (req, res): Promise<void> => {
       return;
     }
 
-    const { chapterId, message, history } = req.body as {
+    const { chapterId, message, history, image } = req.body as {
       chapterId?: number;
       message?: string;
       history?: ChatMessage[];
+      image?: ChatImage;
     };
 
-    if (!message || typeof message !== "string" || !message.trim()) {
-      res.status(400).json({ error: "message is required" });
+    const hasImage = image && typeof image.data === "string" && typeof image.mimeType === "string";
+
+    if ((!message || typeof message !== "string" || !message.trim()) && !hasImage) {
+      res.status(400).json({ error: "message or image is required" });
       return;
+    }
+
+    if (hasImage) {
+      if (!ALLOWED_IMAGE_MIME_TYPES.has(image.mimeType)) {
+        res.status(400).json({ error: `Unsupported image type: ${image.mimeType}` });
+        return;
+      }
+      // base64 is ~4/3 the size of the raw bytes.
+      const approxBytes = Math.ceil((image.data.length * 3) / 4);
+      if (approxBytes > MAX_IMAGE_BYTES) {
+        res.status(413).json({ error: "Image is too large (max 8MB)." });
+        return;
+      }
     }
 
     let context = "";
@@ -89,11 +149,7 @@ router.post("/chat", async (req, res): Promise<void> => {
       context = await buildChapterContext(chapterId);
     }
 
-    const systemPreamble = context
-      ? `You are AuraLearning's "AI Study Buddy" for a CBSE student. Answer strictly using the chapter context below when it is relevant. ` +
-        `Explain step-by-step, keep it exam-focused and age-appropriate, and if the question falls outside this chapter's context, say so and answer briefly ` +
-        `from general CBSE knowledge instead of refusing.\n\n--- CHAPTER CONTEXT ---\n${context}\n--- END CONTEXT ---\n`
-      : `You are AuraLearning's "AI Study Buddy" for a CBSE student (Classes 6-10). No specific chapter is open right now, so answer generally but keep it exam-focused and age-appropriate.`;
+    const systemPreamble = buildSystemPreamble(context);
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
@@ -105,12 +161,20 @@ router.post("/chat", async (req, res): Promise<void> => {
     const chat = model.startChat({
       history: [
         { role: "user", parts: [{ text: systemPreamble }] },
-        { role: "model", parts: [{ text: "Understood — I'll ground my answers in that chapter's material." }] },
+        { role: "model", parts: [{ text: "Understood — I'll switch between syllabus grounding and general tutoring as needed." }] },
         ...chatHistory,
       ],
     });
 
-    const result = await chat.sendMessage(message);
+    const messageParts: Part[] = [];
+    const text = (message ?? "").trim();
+    if (text) messageParts.push({ text });
+    if (hasImage) {
+      if (!text) messageParts.push({ text: "Please look at this photo and help me with it." });
+      messageParts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+    }
+
+    const result = await chat.sendMessage(messageParts);
     const reply = result.response.text();
 
     res.json({ reply, grounded: Boolean(context) });

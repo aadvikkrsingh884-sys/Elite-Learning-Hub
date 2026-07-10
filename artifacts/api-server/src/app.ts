@@ -26,8 +26,10 @@ app.use(
   }),
 );
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Raised from the default 100kb so chat requests can carry a base64-encoded
+// doubt photo (image/vision) inline in the JSON body.
+app.use(express.json({ limit: "12mb" }));
+app.use(express.urlencoded({ extended: true, limit: "12mb" }));
 
 app.use("/api", router);
 
