@@ -2,3 +2,4 @@
 - [AuraLearning DB seed](aura-learning-db-seed.md) — massive 2026-27 reseed: 385 chapters, 7700 topics+questions, 2310 resources; NO transaction wrapper (critical — see file).
 - [AuraLearning mobile + downloads](aura-learning-mobile-downloads.md) — BottomNav (mobile), hidden sidebar on mobile, study_resources table, PDF download endpoint, ResourceDownloadPanel in Topics.
 - [Gemini model selection & quota gotchas](gemini-model-selection.md) — prefer alias names like gemini-flash-latest over pinned versions; how to list which models a key can actually use.
+- [AuraLearning Google OAuth + PWA](aura-learning-google-pwa.md) — GIS token-based OAuth, passwordHash now nullable, new DB cols: googleId/resetToken/resetTokenExpiry; SW at /sw.js; Background Sync tag aura-progress-sync.

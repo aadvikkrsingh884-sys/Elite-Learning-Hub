@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Loader2, Sparkles, Paperclip } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Sparkles, Paperclip, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useStudyBuddy } from '@/contexts/StudyBuddyContext';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 const BASE_URL = (import.meta.env.BASE_URL ?? '').replace(/\/$/, '');
 
@@ -26,7 +27,6 @@ function fileToBase64(file: File): Promise<string> {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      // Strip the "data:<mime>;base64," prefix — the backend only wants raw base64.
       const comma = result.indexOf(',');
       resolve(comma >= 0 ? result.slice(comma + 1) : result);
     };
@@ -36,14 +36,13 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Globally-mounted floating "AI Study Buddy" chat widget. Fully functional —
- * calls the backend `/api/chat` endpoint, which grounds answers in the
- * active chapter's topics/question-bank/flashcards via Gemini (RAG). The
- * active chapter comes from `StudyBuddyContext`, set by whichever page the
- * student is viewing (e.g. Topics.tsx).
+ * Globally-mounted floating "AI Study Buddy" chat widget.
+ * - Online: full Gemini-powered chat with RAG grounding.
+ * - Offline: widget is suspended with a friendly offline notice.
  */
 export function StudyBuddyChat() {
   const { activeChapter, isOpen: open, openChat, closeChat } = useStudyBuddy();
+  const isOnline = useOnlineStatus();
   const chapterId = activeChapter?.chapterId;
   const chapterTitle = activeChapter?.chapterTitle;
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -58,8 +57,6 @@ export function StudyBuddyChat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, open]);
 
-  // Object URLs used only in message bubbles (already sent) so we revoke them
-  // on unmount without disturbing whichever URL the pending picker currently holds.
   const sentImageUrlsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     return () => {
@@ -69,7 +66,7 @@ export function StudyBuddyChat() {
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // allow re-selecting the same file later
+    e.target.value = '';
     if (!file) return;
     setError(null);
 
@@ -102,12 +99,13 @@ export function StudyBuddyChat() {
   }
 
   async function send() {
+    if (!isOnline) return;
     const text = input.trim();
     const image = pendingImage;
     if ((!text && !image) || sending) return;
     setInput('');
     setError(null);
-    setPendingImage(null); // clears the picker without revoking — the URL now belongs to the message bubble below
+    setPendingImage(null);
     if (image) sentImageUrlsRef.current.add(image.previewUrl);
     const nextHistory: ChatMsg[] = [
       ...messages,
@@ -133,8 +131,6 @@ export function StudyBuddyChat() {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setSending(false);
-      // Object URLs used just for the message bubble preview are safe to keep;
-      // they're revoked on unmount. The pending-image one was already cleared above.
     }
   }
 
@@ -149,7 +145,7 @@ export function StudyBuddyChat() {
                      w-14 h-14 rounded-full bg-success text-white shadow-xl flex items-center justify-center
                      hover:scale-105 active:scale-95 transition-transform"
         >
-          <MessageCircle className="w-6 h-6" />
+          {isOnline ? <MessageCircle className="w-6 h-6" /> : <WifiOff className="w-5 h-5" />}
         </button>
       )}
 
@@ -163,13 +159,17 @@ export function StudyBuddyChat() {
           aria-label="AI Study Buddy chat"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-success text-white shrink-0">
+          <div className={`flex items-center justify-between px-4 py-3 text-white shrink-0 ${isOnline ? 'bg-success' : 'bg-muted-foreground'}`}>
             <div className="flex items-center gap-2 min-w-0">
-              <Sparkles className="w-4 h-4 shrink-0" />
+              {isOnline ? <Sparkles className="w-4 h-4 shrink-0" /> : <WifiOff className="w-4 h-4 shrink-0" />}
               <div className="min-w-0">
                 <p className="font-bold text-sm leading-tight">AI Study Buddy</p>
                 <p className="text-[11px] opacity-90 truncate">
-                  {chapterTitle ? `Grounded in: ${chapterTitle}` : 'Ask me anything about CBSE'}
+                  {!isOnline
+                    ? 'Offline — connect to use the AI Tutor'
+                    : chapterTitle
+                      ? `Grounded in: ${chapterTitle}`
+                      : 'Ask me anything about CBSE'}
                 </p>
               </div>
             </div>
@@ -178,93 +178,113 @@ export function StudyBuddyChat() {
             </button>
           </div>
 
-          {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
-            {messages.length === 0 && (
-              <div className="text-center text-sm text-muted-foreground py-8 px-4">
-                {chapterTitle
-                  ? `Stuck on "${chapterTitle}"? Ask a question and I'll answer using this chapter's material.`
-                  : "Hi! I'm your AI Study Buddy. Ask me a question about any CBSE topic."}
+          {/* Offline screen */}
+          {!isOnline ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-center">
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                <WifiOff className="w-8 h-8 text-muted-foreground" />
               </div>
-            )}
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
-                    m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
-                  }`}
-                >
-                  {m.imagePreviewUrl && (
-                    <img
-                      src={m.imagePreviewUrl}
-                      alt="Attached doubt"
-                      className="max-w-full max-h-48 rounded-lg mb-1.5 object-contain bg-black/5"
-                    />
-                  )}
-                  {m.content}
-                </div>
+              <div>
+                <p className="font-bold text-foreground">AI Tutor is offline</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Connect to the internet to clear your doubts!
+                </p>
               </div>
-            ))}
-            {sending && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-2xl px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Thinking…
-                </div>
-              </div>
-            )}
-            {error && <p className="text-xs text-destructive text-center">{error}</p>}
-          </div>
-
-          {/* Pending image preview */}
-          {pendingImage && (
-            <div className="px-2.5 pt-2 shrink-0">
-              <div className="relative inline-flex items-center gap-2 bg-muted/60 rounded-xl p-1.5 pr-2">
-                <img src={pendingImage.previewUrl} alt="Selected photo" className="w-12 h-12 rounded-lg object-cover" />
-                <span className="text-xs text-muted-foreground max-w-[140px] truncate">{pendingImage.file.name}</span>
-                <button
-                  onClick={clearPendingImage}
-                  aria-label="Remove attached photo"
-                  className="w-5 h-5 rounded-full bg-foreground/10 hover:bg-foreground/20 flex items-center justify-center shrink-0"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
+              <p className="text-xs text-muted-foreground/60">
+                Your notes and progress are saved locally and will sync automatically when you're back online.
+              </p>
             </div>
-          )}
+          ) : (
+            <>
+              {/* Messages */}
+              <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+                {messages.length === 0 && (
+                  <div className="text-center text-sm text-muted-foreground py-8 px-4">
+                    {chapterTitle
+                      ? `Stuck on "${chapterTitle}"? Ask a question and I'll answer using this chapter's material.`
+                      : "Hi! I'm your AI Study Buddy. Ask me a question about any CBSE topic."}
+                  </div>
+                )}
+                {messages.map((m, i) => (
+                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                        m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
+                      }`}
+                    >
+                      {m.imagePreviewUrl && (
+                        <img
+                          src={m.imagePreviewUrl}
+                          alt="Attached doubt"
+                          className="max-w-full max-h-48 rounded-lg mb-1.5 object-contain bg-black/5"
+                        />
+                      )}
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
+                {sending && (
+                  <div className="flex justify-start">
+                    <div className="bg-muted rounded-2xl px-3 py-2 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Thinking…
+                    </div>
+                  </div>
+                )}
+                {error && <p className="text-xs text-destructive text-center">{error}</p>}
+              </div>
 
-          {/* Input */}
-          <div className="p-2.5 border-t border-border/50 flex items-center gap-2 shrink-0">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/heic,image/heif"
-              className="hidden"
-              onChange={handleFileSelect}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach a photo of your doubt"
-              className="h-10 w-10 rounded-full shrink-0 flex items-center justify-center text-muted-foreground hover:bg-muted/60 transition-colors"
-            >
-              <Paperclip className="w-4.5 h-4.5" />
-            </button>
-            <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') send(); }}
-              placeholder={pendingImage ? 'Add a note (optional)…' : 'Ask a question…'}
-              className="flex-1 h-10 rounded-full bg-muted/50 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/40"
-            />
-            <Button
-              size="icon"
-              className="h-10 w-10 rounded-full shrink-0"
-              onClick={send}
-              disabled={sending || (!input.trim() && !pendingImage)}
-              aria-label="Send message"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
+              {/* Pending image preview */}
+              {pendingImage && (
+                <div className="px-2.5 pt-2 shrink-0">
+                  <div className="relative inline-flex items-center gap-2 bg-muted/60 rounded-xl p-1.5 pr-2">
+                    <img src={pendingImage.previewUrl} alt="Selected photo" className="w-12 h-12 rounded-lg object-cover" />
+                    <span className="text-xs text-muted-foreground max-w-[140px] truncate">{pendingImage.file.name}</span>
+                    <button
+                      onClick={clearPendingImage}
+                      aria-label="Remove attached photo"
+                      className="w-5 h-5 rounded-full bg-foreground/10 hover:bg-foreground/20 flex items-center justify-center shrink-0"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Input */}
+              <div className="p-2.5 border-t border-border/50 flex items-center gap-2 shrink-0">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/heic,image/heif"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Attach a photo of your doubt"
+                  className="h-10 w-10 rounded-full shrink-0 flex items-center justify-center text-muted-foreground hover:bg-muted/60 transition-colors"
+                >
+                  <Paperclip className="w-4.5 h-4.5" />
+                </button>
+                <input
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') send(); }}
+                  placeholder={pendingImage ? 'Add a note (optional)…' : 'Ask a question…'}
+                  className="flex-1 h-10 rounded-full bg-muted/50 px-4 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <Button
+                  size="icon"
+                  className="h-10 w-10 rounded-full shrink-0"
+                  onClick={send}
+                  disabled={sending || (!input.trim() && !pendingImage)}
+                  aria-label="Send message"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </>

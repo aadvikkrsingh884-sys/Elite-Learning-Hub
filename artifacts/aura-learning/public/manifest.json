@@ -1,0 +1,19 @@
+{
+  "name": "AuraLearning Elite",
+  "short_name": "AuraElite",
+  "description": "CBSE study companion for Classes 6-10 — tests, flashcards, AI tutor",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#4f46e5",
+  "background_color": "#ffffff",
+  "categories": ["education"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

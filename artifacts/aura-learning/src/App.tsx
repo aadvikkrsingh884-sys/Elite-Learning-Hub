@@ -10,6 +10,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 
 // Pages
 import EntryGateway from '@/pages/EntryGateway';
+import ResetPassword from '@/pages/ResetPassword';
 import Dashboard from '@/pages/Dashboard';
 import Subjects from '@/pages/Subjects';
 import Tests from '@/pages/Tests';
@@ -46,6 +47,7 @@ export default function App() {
               <StudyBuddyProvider>
               <Switch>
                 <Route path="/" component={EntryGateway} />
+                <Route path="/reset-password" component={ResetPassword} />
                 <Route path="/:rest*">
                   <AppLayout>
                     <Switch>

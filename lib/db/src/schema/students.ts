@@ -6,10 +6,13 @@ export const studentsTable = pgTable("students", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   email: varchar("email", { length: 255 }).notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
-  classLevel: integer("class_level").notNull().default(8),
+  passwordHash: text("password_hash"),          // nullable — Google-only users have no password
+  googleId: text("google_id").unique(),          // Google OAuth sub
+  classLevel: integer("class_level").notNull().default(9),
   points: integer("points").notNull().default(0),
   avatarUrl: text("avatar_url"),
+  resetToken: text("reset_token"),               // password reset token (hashed)
+  resetTokenExpiry: timestamp("reset_token_expiry"), // token expiry
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
