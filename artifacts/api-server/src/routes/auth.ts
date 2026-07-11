@@ -123,7 +123,7 @@ router.post("/auth/google", async (req, res): Promise<void> => {
     return;
   }
 
-  let payload: Awaited<ReturnType<typeof googleClient.verifyIdToken>>["getPayload"] extends () => infer R ? R : never;
+  let payload: { sub: string; email: string; name?: string; picture?: string };
   try {
     const ticket = await googleClient.verifyIdToken({
       idToken: credential,
@@ -134,7 +134,7 @@ router.post("/auth/google", async (req, res): Promise<void> => {
       res.status(401).json({ error: "Invalid Google token." });
       return;
     }
-    payload = p;
+    payload = { sub: p.sub, email: p.email, name: p.name, picture: p.picture };
   } catch {
     res.status(401).json({ error: "Could not verify Google credentials." });
     return;

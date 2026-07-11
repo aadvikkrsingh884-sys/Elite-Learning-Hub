@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowRight, Lightbulb, PlayCircle, BookOpen, Clock, Target, CheckCircle2, MessageCircle } from 'lucide-react';
+import { ProgressReportButton } from '@/components/ProgressReportButton';
 import { Link, useLocation } from 'wouter';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
@@ -81,10 +82,15 @@ export default function Dashboard() {
               {greetingSubtitle}
             </p>
           </div>
-          <div className="shrink-0">
+          <div className="shrink-0 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
             <Button size="lg" className="bg-white text-primary hover:bg-white/90 font-bold shadow-sm rounded-xl px-8 h-12 hover-elevate" onClick={() => setLocation('/subjects')}>
               Continue Learning <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
+            <ProgressReportButton
+              variant="outline"
+              size="lg"
+              className="bg-white/10 border-white/40 text-white hover:bg-white/20 hover:text-white rounded-xl h-12 px-5"
+            />
           </div>
         </div>
       </div>

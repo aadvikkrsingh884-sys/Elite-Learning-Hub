@@ -29,3 +29,4 @@ defaultBucketID = "replit-objstore-5845706a-c7fc-4321-aba5-d9a8b6a7d78b"
 
 [userenv.shared]
 VITE_GOOGLE_CLIENT_ID = "258473449298-g6hmnlhjfmflkrgmsr8o02lrb8jh0nf8.apps.googleusercontent.com"
+RESEND_FROM_EMAIL = "onboarding@resend.dev"

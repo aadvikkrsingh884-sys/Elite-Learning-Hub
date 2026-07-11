@@ -48,7 +48,7 @@ export default function EntryGateway() {
 
   // ─── Google Identity Services initialisation ─────────────────────────────
   useEffect(() => {
-    function initGSI() {
+    function initGSI(): void {
       if (typeof google === 'undefined' || !google?.accounts?.id) return;
 
       google.accounts.id.initialize({
@@ -74,6 +74,7 @@ export default function EntryGateway() {
     // GSI script may finish loading after React mounts
     if ((window as any).__gsiReady) {
       initGSI();
+      return;
     } else {
       const interval = setInterval(() => {
         if (typeof google !== 'undefined' && google?.accounts?.id) {

@@ -18,6 +18,7 @@ import {
   CheckCircle2, Zap, Circle, Lock, Flag, ArrowRight, Search,
   SlidersHorizontal, Lightbulb, BookOpen, Target, Flame
 } from 'lucide-react';
+import { ProgressReportButton } from '@/components/ProgressReportButton';
 import { useLocation } from 'wouter';
 
 // ─── Mastery Ring ─────────────────────────────────────────────────────────────
@@ -453,6 +454,15 @@ export default function Subjects() {
 
         {/* Sidebar */}
         <aside className="w-full lg:w-72 shrink-0 space-y-4">
+          {/* Progress Report Download */}
+          <Card className="shadow-sm border-border/50 dark:glass-card">
+            <CardContent className="p-4">
+              <h3 className="font-bold text-sm mb-1">Progress Report</h3>
+              <p className="text-xs text-muted-foreground mb-3">Download a full PDF showing every topic and your completion status.</p>
+              <ProgressReportButton className="w-full justify-center" />
+            </CardContent>
+          </Card>
+
           {/* Smart Suggestion */}
           <Card className="shadow-sm border-primary/20 bg-primary/5 dark:glass-card dark:neon-border">
             <CardContent className="p-5">

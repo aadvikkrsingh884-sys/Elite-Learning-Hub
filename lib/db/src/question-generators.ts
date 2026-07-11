@@ -116,7 +116,22 @@ const TOPIC_LABELS: Record<string, string[]> = {
   ],
 };
 
-export function generateTopics(subjectName: string, chapterTitle: string): { title: string; isImportant: number }[] {
+import { CLASS9_MICRO_TOPICS } from "./class9-micro-topics";
+
+export function generateTopics(subjectName: string, chapterTitle: string, classLevel?: number): { title: string; isImportant: number }[] {
+  // For Class 9, use authentic NCERT-aligned micro-topics when available.
+  if (classLevel === 9) {
+    const key = `${subjectName}:${chapterTitle}`;
+    const microTopics = CLASS9_MICRO_TOPICS[key];
+    if (microTopics && microTopics.length > 0) {
+      return microTopics.map((title, i) => ({
+        title,
+        isImportant: i % 3 === 1 ? 1 : 0, // ~1 in 3 flagged important
+      }));
+    }
+  }
+
+  // Generic fallback for all other classes / subjects.
   const labels = TOPIC_LABELS[subjectName] ?? TOPIC_LABELS.English;
   return labels.map((label, i) => ({
     title: `${chapterTitle} — ${label}`,

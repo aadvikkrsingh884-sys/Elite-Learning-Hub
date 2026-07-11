@@ -110,7 +110,7 @@ async function main() {
     // 3. Topics — 20 per chapter, subject-aware templates (deep sub-topic coverage).
     const topicRows: any[] = [];
     for (const ch of chapterRows) {
-      const topics = generateTopics(ch.subjectName, ch.title).slice(0, TOPICS_PER_CHAPTER);
+      const topics = generateTopics(ch.subjectName, ch.title, ch.classLevel).slice(0, TOPICS_PER_CHAPTER);
       for (const t of topics) topicRows.push({ chapterId: ch.chapterId, title: t.title, isImportant: t.isImportant });
       report.topics += topics.length;
       const cls = report.byClass[ch.classLevel] ??= { chapters: 0, topics: 0, questions: 0, flashcards: 0 };
